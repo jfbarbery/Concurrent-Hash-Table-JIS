@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #define MAX_LINE_LENGTH 50
 
@@ -27,8 +28,6 @@ int num_digits_after_first_digit(char* thread_info, int i, int len);
 
 int main(void)
 {
-	printf("Hello, World!\n");
-	
 	int fd = open("commands.txt", O_RDONLY);
 	if (fd != -1)
 	{
@@ -39,8 +38,6 @@ int main(void)
 		printf("Error opening file. Is commands.txt contained in this directory?\n");
 		return 1;
 	}
-	
-	printf("The file descriptor is: %d.\n", fd);
 	
 	// Read the number of threads
 	char* thread_info = (char*) malloc(sizeof(char) * MAX_LINE_LENGTH);
@@ -70,7 +67,7 @@ int main(void)
 	free(buf);
 	num_threads = num_digits_in_thread_info(thread_info, i);
 	free(thread_info);
-	printf("%d\n", num_threads);
+	//printf("%d\n", num_threads);
 	
 	// TODO: Process commands
 	
@@ -123,3 +120,4 @@ int num_digits_after_first_digit(char* thread_info, int i, int len)
 	}
 	return ret;
 }
+
