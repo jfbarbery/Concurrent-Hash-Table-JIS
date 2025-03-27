@@ -25,7 +25,17 @@ int main(void)
 	printf("Hello, World!\n");
 	
 	int fd = open("commands.txt", O_RDONLY);
-	printf("Successfully opened the file.\n");
+	if (fd != -1)
+	{
+		printf("Successfully opened the file.\n");
+	}
+	else
+	{
+		printf("Error opening file. Is commands.txt contained in this directory?\n");
+		return 1;
+	}
+	
+	printf("The file descriptor is: %d\n", fd);
 	
 	close(fd);
 	printf("Successfully closed the file.\n");
