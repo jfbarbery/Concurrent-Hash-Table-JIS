@@ -23,8 +23,10 @@ typedef struct hash_struct
 void insert(char* key, uint32_t value);
 void delete(char* key);
 void search(char* key);
-int num_digits_in_thread_info(char* thread_info, int len);
-int num_digits_after_first_digit(char* thread_info, int i, int len);
+int get_num_threads_helper(char* thread_info);
+int num_digits_after_first_digit(char* thread_info, int i);
+int get_num_threads(int fd);
+char* parse_line(int fd);
 
 int main(void)
 {
@@ -40,36 +42,19 @@ int main(void)
 	}
 	
 	// Read the number of threads
-	char* thread_info = (char*) malloc(sizeof(char) * MAX_LINE_LENGTH);
-	char* buf = (char*) malloc(sizeof(char));
-	int num_threads = 0;
-	int i = 0;
-	thread_info[0] = '\0';
-	int flag = 1;
-	while (flag)
-	{
-		ssize_t ret_value = read(fd, buf, 1);
-		if (buf[0] == '\n')
-		{
-			flag = 0;
-			break;
-		}
-		if (ret_value == 0)
-		{
-			printf("Reached end of file.\n");
-		}
-		else if (ret_value <= MAX_LINE_LENGTH)
-		{
-			thread_info[i] = buf[0];
-		}
-		i++;
-	}
-	free(buf);
-	num_threads = num_digits_in_thread_info(thread_info, i);
-	free(thread_info);
-	//printf("%d\n", num_threads);
+	int num_threads = get_num_threads(fd);
+	printf("%d\n", num_threads);
 	
-	// TODO: Process commands
+	// Process commands
+	int command_to_process = 1;
+	// Edge case to ensure there is at least one command
+	// TODO: Process first command
+	
+	
+	while (command_to_process)
+	{
+		break;
+	}
 	
 	close(fd);
 	printf("Successfully closed the file.\n");
@@ -92,25 +77,34 @@ void search(char* key)
 	
 }
 
-int num_digits_in_thread_info(char* thread_info, int len)
+int get_num_threads_helper(char* thread_info)
 {
-	int num = 0;
 	// Parse thread info for number of threads
-	for (int i = 0; i < len; i++)
+	for (int i = 0; thread_info[i] != '\0'; i++)
 	{
+		// Once we find the first digit, use helper to find how many digits follow
 		if (isdigit(thread_info[i]))
 		{
-			num = num_digits_after_first_digit(thread_info, i, len) + 1;
-			break;
+			int num_digits = num_digits_after_first_digit(thread_info, i) + 1;
+			char* num_threads_string = (char*) malloc(sizeof(char) * (num_digits + 1));
+			// Copy num characters from thread_info into num_threads_string
+			// In other words, copy just the number of threads as a string
+			for (int j = 0; j < num_digits; j++)
+			{
+				num_threads_string[j] = thread_info[i+j];
+			}
+			int num_threads = atoi(num_threads_string);
+			free(num_threads_string);
+			return num_threads;
 		}
 	}
-	return num;
+	return -1;
 }
 
-int num_digits_after_first_digit(char* thread_info, int i, int len)
+int num_digits_after_first_digit(char* thread_info, int i)
 {
 	int ret = 0;
-	for (i += 1; i < len; i++)
+	for (i += 1; thread_info[i] != '\0'; i++)
 	{
 		if (isdigit(thread_info[i]))
 		{
@@ -120,4 +114,47 @@ int num_digits_after_first_digit(char* thread_info, int i, int len)
 	}
 	return ret;
 }
+
+int get_num_threads(int fd)
+{
+	int num_threads = 0;
+	char* thread_info = parse_line(fd);
+	num_threads = get_num_threads_helper(thread_info);
+	free(thread_info);
+	
+	return num_threads;
+}
+// Reads the contents from the file descriptor until a newline character is read.
+// The next character to be read will be on the following line.
+char* parse_line(int fd)
+{
+	char* line_info = (char*) malloc(sizeof(char) * MAX_LINE_LENGTH);
+	char* buf = (char*) malloc(sizeof(char));
+	
+	int i = 0;
+	line_info[0] = '\0';
+	int no_nl = 1;
+	while (no_nl)
+	{
+		ssize_t ret_value = read(fd, buf, 1);
+		if (buf[0] == '\n')
+		{
+			no_nl = 0;
+			break;
+		}
+		if (ret_value == 0)
+		{
+			printf("Reached end of file.\n");
+		}
+		else if (ret_value <= MAX_LINE_LENGTH)
+		{
+			line_info[i] = buf[0];
+		}
+		i++;
+	}
+	free(buf);
+	line_info[i+1] = '\0';
+	return line_info;
+}
+
 
