@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <string.h>
 
 #define MAX_LINE_LENGTH 50
 
@@ -26,7 +27,8 @@ void search(char* key);
 int get_num_threads_helper(char* thread_info);
 int num_digits_after_first_digit(char* thread_info, int i);
 int get_num_threads(int fd);
-char* parse_line(int fd);
+char* parse_until(int fd, char c);
+char* parse_string_until(char* str, char c);
 
 int main(void)
 {
@@ -50,7 +52,25 @@ int main(void)
 	// Edge case to ensure there is at least one command
 	// TODO: Process first command
 	
-	
+	char* command_info = parse_until(fd, '\n');
+	char* command = parse_string_until(command_info, ',');
+	if (!strcmp(command, "insert"))
+	{
+		printf("insert command\n");
+	}
+	else if (!strcmp(command, "delete"))
+	{
+		printf("delete command\n");
+	}
+	else if (!strcmp(command, "search"))
+	{
+		printf("search command\n");
+	}
+	else
+	{
+		printf("Unrecognized command.\n");
+		return -1;
+	}
 	while (command_to_process)
 	{
 		break;
@@ -118,15 +138,15 @@ int num_digits_after_first_digit(char* thread_info, int i)
 int get_num_threads(int fd)
 {
 	int num_threads = 0;
-	char* thread_info = parse_line(fd);
+	char* thread_info = parse_until(fd, '\n');
 	num_threads = get_num_threads_helper(thread_info);
 	free(thread_info);
 	
 	return num_threads;
 }
-// Reads the contents from the file descriptor until a newline character is read.
+// Reads the contents from the file descriptor until c is read.
 // The next character to be read will be on the following line.
-char* parse_line(int fd)
+char* parse_until(int fd, char c)
 {
 	char* line_info = (char*) malloc(sizeof(char) * MAX_LINE_LENGTH);
 	char* buf = (char*) malloc(sizeof(char));
@@ -137,7 +157,7 @@ char* parse_line(int fd)
 	while (no_nl)
 	{
 		ssize_t ret_value = read(fd, buf, 1);
-		if (buf[0] == '\n')
+		if (buf[0] == c)
 		{
 			no_nl = 0;
 			break;
@@ -157,4 +177,20 @@ char* parse_line(int fd)
 	return line_info;
 }
 
-
+// Parse str until c is found, return the substring parsed.
+char* parse_string_until(char* str, char c)
+{
+	int len = 0;
+	int i = 0;
+	for (; str[i] != c; i++)
+	{
+		i++;
+	}
+	len = i;
+	char* parsed_string = (char*) malloc(sizeof(char) * (len + 1));
+	for (i = 0; i < len; i++)
+	{
+		parsed_string[i] = str[i];
+	}
+	return parsed_string;
+}
