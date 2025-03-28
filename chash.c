@@ -29,6 +29,7 @@ int num_digits_after_first_digit(char* thread_info, int i);
 int get_num_threads(int fd);
 char* parse_until(int fd, char c);
 char* parse_string_until(char* str, char c);
+int get_salary(int fd);
 
 int main(void)
 {
@@ -48,33 +49,55 @@ int main(void)
 	printf("%d\n", num_threads);
 	
 	// Process commands
-	int command_to_process = 1;
+	int command_to_parse = 1;
 	// Edge case to ensure there is at least one command
 	// TODO: Process first command
+	char* command;
+	do
+	{
+		sleep(1);
+		command = parse_until(fd, ',');
+		// get command
+		if (!strcmp(command, "insert"))
+		{
+			printf("insert command\n");
+		}
+		else if (!strcmp(command, "delete"))
+		{
+			printf("delete command\n");
+		}
+		else if (!strcmp(command, "search"))
+		{
+			printf("search command\n");
+		}
+		else
+		{
+			printf("Unrecognized command.\n");
+			command_to_parse = 0;
+			//return -1; // optionally end program here
+		}
+		// get name
+		char* name = parse_until(fd, ',');
+		if (name == NULL)
+		{
+			printf("Name not found\n");
+		}
+		printf("Name: |%s|\n", name);
+		
+		// get salary
+		/*
+		if (!strcmp(command, "insert"))
+		{
+			int salary = get_salary(fd);
+			printf("Salary: %d\n", salary);
+			parse_until(fd, '\n'); // remove when you implement get_salary
+		}
+		*/
+		parse_until(fd, '\n');
+		
+	} while (command_to_parse);
 	
-	char* command_info = parse_until(fd, '\n');
-	char* command = parse_string_until(command_info, ',');
-	if (!strcmp(command, "insert"))
-	{
-		printf("insert command\n");
-	}
-	else if (!strcmp(command, "delete"))
-	{
-		printf("delete command\n");
-	}
-	else if (!strcmp(command, "search"))
-	{
-		printf("search command\n");
-	}
-	else
-	{
-		printf("Unrecognized command.\n");
-		return -1;
-	}
-	while (command_to_process)
-	{
-		break;
-	}
+	free(command);
 	
 	close(fd);
 	printf("Successfully closed the file.\n");
@@ -153,18 +176,19 @@ char* parse_until(int fd, char c)
 	
 	int i = 0;
 	line_info[0] = '\0';
-	int no_nl = 1;
-	while (no_nl)
+	int c_not_found = 1;
+	while (c_not_found)
 	{
 		ssize_t ret_value = read(fd, buf, 1);
 		if (buf[0] == c)
 		{
-			no_nl = 0;
+			c_not_found = 0;
 			break;
 		}
 		if (ret_value == 0)
 		{
 			printf("Reached end of file.\n");
+			break;
 		}
 		else if (ret_value <= MAX_LINE_LENGTH)
 		{
@@ -193,4 +217,9 @@ char* parse_string_until(char* str, char c)
 		parsed_string[i] = str[i];
 	}
 	return parsed_string;
+}
+
+int get_salary(int fd)
+{
+	return 0;
 }
