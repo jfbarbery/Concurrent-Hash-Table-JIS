@@ -29,78 +29,71 @@ int num_digits_after_first_digit(char* thread_info, int i);
 int get_num_threads(int fd);
 char* parse_until(int fd, char c);
 char* parse_string_until(char* str, char c);
-int get_salary(int fd);
+
+const int debug = 1;
 
 int main(void)
 {
 	int fd = open("commands.txt", O_RDONLY);
 	if (fd != -1)
 	{
-		printf("Successfully opened the file.\n");
+		if (debug) printf("Successfully opened the file.\n");
 	}
 	else
 	{
-		printf("Error opening file. Is commands.txt contained in this directory?\n");
+		if (debug) printf("Error opening file. Is commands.txt contained in this directory?\n");
 		return 1;
 	}
 	
 	// Read the number of threads
 	int num_threads = get_num_threads(fd);
-	printf("%d\n", num_threads);
+	if (debug) printf("Number of threads: %d\n\n", num_threads);
 	
 	// Process commands
 	int command_to_parse = 1;
-	// Edge case to ensure there is at least one command
-	// TODO: Process first command
 	char* command;
 	do
 	{
-		sleep(1);
+		// Parse command
 		command = parse_until(fd, ',');
-		// get command
 		if (!strcmp(command, "insert"))
 		{
-			printf("insert command\n");
+			if (debug) printf("insert command\n");
 		}
 		else if (!strcmp(command, "delete"))
 		{
-			printf("delete command\n");
+			if (debug) printf("delete command\n");
 		}
 		else if (!strcmp(command, "search"))
 		{
-			printf("search command\n");
+			if (debug) printf("search command\n");
 		}
 		else
 		{
-			printf("Unrecognized command.\n");
+			if (debug) printf("Unrecognized command.\n");
 			command_to_parse = 0;
-			//return -1; // optionally end program here
+			//return -1; // Optionally end program here
 		}
-		// get name
-		char* name = parse_until(fd, ',');
-		if (name == NULL)
-		{
-			printf("Name not found\n");
-		}
-		printf("Name: |%s|\n", name);
+		free(command);
 		
-		// get salary
-		/*
+		// Parse name
+		char* name = parse_until(fd, ',');
+		if (debug) printf("Name: |%s|\n", name);
+		free(name);
+		
+		// Parse salary
+		char* salary_string = parse_until(fd, '\n');
 		if (!strcmp(command, "insert"))
 		{
-			int salary = get_salary(fd);
-			printf("Salary: %d\n", salary);
-			parse_until(fd, '\n'); // remove when you implement get_salary
+			int salary = atoi(salary_string);
+			if (debug) printf("Salary: %d\n", salary);
 		}
-		*/
-		parse_until(fd, '\n');
-		
+		free(salary_string);
+		if (debug) printf("\n");
 	} while (command_to_parse);
 	
-	free(command);
-	
 	close(fd);
-	printf("Successfully closed the file.\n");
+	if (debug) printf("Successfully closed the file.\n");
 	
 	return 0;
 }
@@ -187,7 +180,7 @@ char* parse_until(int fd, char c)
 		}
 		if (ret_value == 0)
 		{
-			printf("Reached end of file.\n");
+			if (debug) printf("Reached end of file.\n");
 			break;
 		}
 		else if (ret_value <= MAX_LINE_LENGTH)
@@ -219,7 +212,4 @@ char* parse_string_until(char* str, char c)
 	return parsed_string;
 }
 
-int get_salary(int fd)
-{
-	return 0;
-}
+
