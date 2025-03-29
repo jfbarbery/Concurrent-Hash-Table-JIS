@@ -21,6 +21,7 @@ typedef struct hash_struct
 	struct hash_struct *next;
 } hashRecord;
 
+hashRecord* createHashTable();
 void insert(char* key, uint32_t value);
 void delete(char* key);
 void search(char* key);
@@ -44,6 +45,8 @@ int main(void)
 		if (debug) printf("Error opening file. Is commands.txt contained in this directory?\n");
 		return 1;
 	}
+	// Initialize the record
+	hashRecord* record = createHashTable();
 	
 	// Read the number of threads
 	int num_threads = get_num_threads(fd);
@@ -96,6 +99,13 @@ int main(void)
 	if (debug) printf("Successfully closed the file.\n");
 	
 	return 0;
+}
+
+hashRecord* createHashTable()
+{
+	hashRecord* record = (hashRecord*) malloc(sizeof(hashRecord));
+	record->next = NULL;
+	return record;
 }
 
 void insert(char* key, uint32_t value)
