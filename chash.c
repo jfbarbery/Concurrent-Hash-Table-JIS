@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <string.h>
+#include <dirent.h>
 
 #define MAX_LINE_LENGTH 50
 
@@ -35,7 +36,41 @@ const int debug = 1;
 
 int main(void)
 {
-	int fd = open("commands.txt", O_RDONLY);
+	// Check to see if "commands.txt" is contained in this directory
+	// (Our source code does not contain commands.txt, so if this is
+	// not present, it means use our own commands.txt file in dev/)
+	DIR* dirp = opendir("./");
+	if (dirp != NULL)
+	{
+		if (debug) printf("Successfully opened the directory.\n");
+	}
+	else
+	{
+		if (debug) printf("Error opening directory. What...\n");
+		return -1;
+	}
+	struct dirent* entry = readdir(dirp);
+	char* filename = "";
+	while (entry != NULL)
+	{
+		// If "commands.txt" is contained in this directory
+		if (!strcmp(entry->d_name, "commands.txt"))
+		{
+			filename = "commands.txt";
+			break;
+		}
+		entry = readdir(dirp);
+	}
+	closedir(dirp);
+	// If "commands.txt" was not contained in this directory
+	if (!strcmp(filename, ""))
+	{
+		// Testing file
+		filename = "dev/commands.txt";
+	}
+	
+	// Open commands file
+	int fd = open(filename, O_RDONLY);
 	if (fd != -1)
 	{
 		if (debug) printf("Successfully opened the file.\n");
@@ -97,6 +132,8 @@ int main(void)
 	
 	close(fd);
 	if (debug) printf("Successfully closed the file.\n");
+	
+	free(record);
 	
 	return 0;
 }
@@ -171,7 +208,7 @@ int get_num_threads(int fd)
 	return num_threads;
 }
 // Reads the contents from the file descriptor until c is read.
-// The next character to be read will be on the following line.
+// The next character to be read will be the character following c.
 char* parse_until(int fd, char c)
 {
 	char* line_info = (char*) malloc(sizeof(char) * MAX_LINE_LENGTH);
