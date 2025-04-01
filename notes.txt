@@ -1,0 +1,5 @@
+sort output by timestamps, it might be out of order 
+the thread function just creates the pthreads
+need to use void pointers to pass parameters
+should not use multiple write locks, write locks block everything
+get accurate timestamps using sys/time.h
