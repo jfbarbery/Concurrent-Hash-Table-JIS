@@ -31,8 +31,11 @@ int num_digits_after_first_digit(char* thread_info, int i);
 int get_num_threads(int fd);
 char* parse_until(int fd, char c);
 char* parse_string_until(char* str, char c);
+uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length);
 
 const int debug = 1;
+hashRecord* root = NULL;
+hashRecord* tail = NULL;
 int main(void)
 {
 	// Check to see if "commands.txt" is contained in this directory
@@ -80,7 +83,7 @@ int main(void)
 		return 1;
 	}
 	// Initialize the record
-	hashRecord* record = createHashTable();
+
 	
 	// Read the number of threads
 	int num_threads = get_num_threads(fd);
@@ -146,20 +149,87 @@ hashRecord* createHashTable()
 	return record;
 }
 
-void insert(char* key, uint32_t value)
+hashRecord* newHashRecord(char* name, uint32_t salary)
 {
+	hashRecord* record = (hashRecord*) malloc(sizeof(hashRecord));
+	record->name = name;
+	record->salary = salary;
+	record->hash = jenkins_one_at_a_time_hash((const uint8_t*) name, strlen(name));
+	record->next = NULL;
+	return record;
+}
+
+void insert(char* name, uint32_t salary)
+{
+	hashRecord* temp = tail;
+	hashRecord* new = newHashRecord(name, salary);
+
+	if(root == NULL){
+		root = new;
+		tail = new;
+	}
+	else
+	{
+		tail->next = new;
+		tail = new;
+	}
 	
 }
 
 void delete(char* key)
 {
-	
+	hashRecord* cur = root;
+	if(cur == NULL)
+	{
+		if (debug) printf("Hash table is empty.\n");
+		return;
+	}
+	else{
+		while(cur->next != NULL){
+			if(strcmp(cur->next->name, key) == 0)
+			{
+				if (debug) printf("Deleting %s\n", cur->next->name);
+				hashRecord* temp = cur->next->next;
+				free(cur->next);
+				cur->next = temp;
+				break;
+			}
+			else
+			{
+				cur = cur->next;
+			}
+		}
+	}
 }
 
-void search(char* key)
+void search(uint32_t key)
 {
 	
 }
+
+void print()// not sure if this is what is needed
+{
+	hashRecord* cur = root;
+	while(cur != NULL)
+	{
+		printf("Name: %s, Salary: %d\n", cur->name, cur->salary);
+		cur = cur->next;
+	}
+}
+
+uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length) {
+	size_t i = 0;
+	uint32_t hash = 0;
+	while (i != length) {
+	  hash += key[i++];
+	  hash += hash << 10;
+	  hash ^= hash >> 6;
+	}
+	hash += hash << 3;
+	hash ^= hash >> 11;
+	hash += hash << 15;
+	return hash;
+  }
 
 int get_num_threads_helper(char* thread_info)
 {
