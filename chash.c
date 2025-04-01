@@ -33,7 +33,6 @@ char* parse_until(int fd, char c);
 char* parse_string_until(char* str, char c);
 
 const int debug = 1;
-
 int main(void)
 {
 	// Check to see if "commands.txt" is contained in this directory
@@ -90,6 +89,7 @@ int main(void)
 	// Process commands
 	int command_to_parse = 1;
 	char* command;
+	int counter = 0;
 	do
 	{
 		// Parse command
@@ -128,7 +128,8 @@ int main(void)
 		}
 		free(salary_string);
 		if (debug) printf("\n");
-	} while (command_to_parse);
+		counter++;
+	} while (counter < num_threads);
 	
 	close(fd);
 	if (debug) printf("Successfully closed the file.\n");
