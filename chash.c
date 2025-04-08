@@ -8,326 +8,323 @@
 #include <ctype.h>
 #include <string.h>
 #include <dirent.h>
+#include <pthread.h>
+#include <time.h>
 
 #define MAX_LINE_LENGTH 50
 
 typedef struct hash_struct
 {
-	// Hash value produced by running the name text through the hash function
 	uint32_t hash;
-	// Full name of person (key)
 	char name[50];
-	// Salary of person (value)
 	uint32_t salary;
 	struct hash_struct *next;
 } hashRecord;
 
-hashRecord* createHashTable();
-void insert(char* key, uint32_t value);
-void delete(char* key);
-void search(char* key);
-int get_num_threads_helper(char* thread_info);
-int num_digits_after_first_digit(char* thread_info, int i);
-int get_num_threads(int fd);
-char* parse_until(int fd, char c);
-char* parse_string_until(char* str, char c);
-uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length);
-
-const int debug = 1;
-hashRecord* root = NULL;
-hashRecord* tail = NULL;
-int main(void)
+typedef struct
 {
-	// Check to see if "commands.txt" is contained in this directory
-	// (Our source code does not contain commands.txt, so if this is
-	// not present, it means use our own commands.txt file in dev/)
-	DIR* dirp = opendir("./");
-	if (dirp != NULL)
-	{
-		if (debug) printf("Successfully opened the directory.\n");
-	}
-	else
-	{
-		if (debug) printf("Error opening directory. What...\n");
-		return -1;
-	}
-	struct dirent* entry = readdir(dirp);
-	char* filename = "";
-	while (entry != NULL)
-	{
-		// If "commands.txt" is contained in this directory
-		if (!strcmp(entry->d_name, "commands.txt"))
-		{
-			filename = "commands.txt";
-			break;
-		}
-		entry = readdir(dirp);
-	}
-	closedir(dirp);
-	// If "commands.txt" was not contained in this directory
-	if (!strcmp(filename, ""))
-	{
-		// Testing file
-		filename = "dev/commands.txt";
-	}
-	
-	// Open commands file
-	int fd = open(filename, O_RDONLY);
-	if (fd != -1)
-	{
-		if (debug) printf("Successfully opened the file.\n");
-	}
-	else
-	{
-		if (debug) printf("Error opening file. Is commands.txt contained in this directory?\n");
-		return 1;
-	}
-	// Initialize the record
+	char *command;
+	char *name;
+	char *param;
+	FILE *out;
+} ThreadArgs;
 
-	
-	// Read the number of threads
-	int num_threads = get_num_threads(fd);
-	if (debug) printf("Number of threads: %d\n\n", num_threads);
-	
-	// Process commands
-	int command_to_parse = 1;
-	char* command;
-	int counter = 0;
-	do
-	{
-		// Parse command
-		command = parse_until(fd, ',');
-		if (!strcmp(command, "insert"))
-		{
-			if (debug) printf("insert command\n");
-		}
-		else if (!strcmp(command, "delete"))
-		{
-			if (debug) printf("delete command\n");
-		}
-		else if (!strcmp(command, "search"))
-		{
-			if (debug) printf("search command\n");
-		}
-		else
-		{
-			if (debug) printf("Unrecognized command.\n");
-			command_to_parse = 0;
-			//return -1; // Optionally end program here
-		}
-		free(command);
-		
-		// Parse name
-		char* name = parse_until(fd, ',');
-		if (debug) printf("Name: |%s|\n", name);
-		free(name);
-		
-		// Parse salary
-		char* salary_string = parse_until(fd, '\n');
-		if (!strcmp(command, "insert"))
-		{
-			int salary = atoi(salary_string);
-			if (debug) printf("Salary: %d\n", salary);
-		}
-		free(salary_string);
-		if (debug) printf("\n");
-		counter++;
-	} while (counter < num_threads);
-	
-	close(fd);
-	if (debug) printf("Successfully closed the file.\n");
-	
-	free(record);
-	
-	return 0;
-}
+hashRecord *root = NULL;
+hashRecord *tail = NULL;
 
-hashRecord* createHashTable()
+// Threading variables
+pthread_rwlock_t rwlock;
+pthread_mutex_t insert_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t inserts_done = PTHREAD_COND_INITIALIZER;
+int insert_count = 0;
+int total_inserts = 0;
+int lock_acquire_count = 0;
+int lock_release_count = 0;
+
+uint32_t jenkins_one_at_a_time_hash(const uint8_t *key, size_t length)
 {
-	hashRecord* record = (hashRecord*) malloc(sizeof(hashRecord));
-	record->next = NULL;
-	return record;
-}
-
-hashRecord* newHashRecord(char* name, uint32_t salary)
-{
-	hashRecord* record = (hashRecord*) malloc(sizeof(hashRecord));
-	record->name = name;
-	record->salary = salary;
-	record->hash = jenkins_one_at_a_time_hash((const uint8_t*) name, strlen(name));
-	record->next = NULL;
-	return record;
-}
-
-void insert(char* name, uint32_t salary)
-{
-	hashRecord* temp = tail;
-	hashRecord* new = newHashRecord(name, salary);
-
-	if(root == NULL){
-		root = new;
-		tail = new;
-	}
-	else
-	{
-		tail->next = new;
-		tail = new;
-	}
-	
-}
-
-void delete(char* key)
-{
-	hashRecord* cur = root;
-	if(cur == NULL)
-	{
-		if (debug) printf("Hash table is empty.\n");
-		return;
-	}
-	else{
-		while(cur->next != NULL){
-			if(strcmp(cur->next->name, key) == 0)
-			{
-				if (debug) printf("Deleting %s\n", cur->next->name);
-				hashRecord* temp = cur->next->next;
-				free(cur->next);
-				cur->next = temp;
-				break;
-			}
-			else
-			{
-				cur = cur->next;
-			}
-		}
-	}
-}
-
-void search(uint32_t key)
-{
-	
-}
-
-void print()// not sure if this is what is needed
-{
-	hashRecord* cur = root;
-	while(cur != NULL)
-	{
-		printf("Name: %s, Salary: %d\n", cur->name, cur->salary);
-		cur = cur->next;
-	}
-}
-
-uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length) {
 	size_t i = 0;
 	uint32_t hash = 0;
-	while (i != length) {
-	  hash += key[i++];
-	  hash += hash << 10;
-	  hash ^= hash >> 6;
+	while (i != length)
+	{
+		hash += key[i++];
+		hash += hash << 10;
+		hash ^= hash >> 6;
 	}
 	hash += hash << 3;
 	hash ^= hash >> 11;
 	hash += hash << 15;
 	return hash;
-  }
-
-int get_num_threads_helper(char* thread_info)
-{
-	// Parse thread info for number of threads
-	for (int i = 0; thread_info[i] != '\0'; i++)
-	{
-		// Once we find the first digit, use helper to find how many digits follow
-		if (isdigit(thread_info[i]))
-		{
-			int num_digits = num_digits_after_first_digit(thread_info, i) + 1;
-			char* num_threads_string = (char*) malloc(sizeof(char) * (num_digits + 1));
-			// Copy num characters from thread_info into num_threads_string
-			// In other words, copy just the number of threads as a string
-			for (int j = 0; j < num_digits; j++)
-			{
-				num_threads_string[j] = thread_info[i+j];
-			}
-			int num_threads = atoi(num_threads_string);
-			free(num_threads_string);
-			return num_threads;
-		}
-	}
-	return -1;
 }
 
-int num_digits_after_first_digit(char* thread_info, int i)
+void insert(char *name, uint32_t salary, FILE *out)
 {
-	int ret = 0;
-	for (i += 1; thread_info[i] != '\0'; i++)
+	uint32_t hash = jenkins_one_at_a_time_hash((const uint8_t *)name, strlen(name));
+	time_t now = time(NULL);
+	hashRecord *cur = root;
+
+	while (cur != NULL)
 	{
-		if (isdigit(thread_info[i]))
+		if (cur->hash == hash && strcmp(cur->name, name) == 0)
 		{
-			ret++;
+			cur->salary = salary;
+			fprintf(out, "%ld,INSERT,%s,%u\n", now, name, salary);
+			return;
 		}
-		else break;
+		cur = cur->next;
 	}
-	return ret;
+
+	hashRecord *newNode = (hashRecord *)malloc(sizeof(hashRecord));
+	newNode->hash = hash;
+	strcpy(newNode->name, name);
+	newNode->salary = salary;
+	newNode->next = NULL;
+
+	if (root == NULL)
+	{
+		root = newNode;
+		tail = newNode;
+	}
+	else
+	{
+		tail->next = newNode;
+		tail = newNode;
+	}
+
+	fprintf(out, "%ld,INSERT,%s,%u\n", now, name, salary);
+}
+
+void delete_record(char *name, FILE *out)
+{
+	time_t now = time(NULL);
+	uint32_t target_hash = jenkins_one_at_a_time_hash((const uint8_t *)name, strlen(name));
+	hashRecord *cur = root;
+
+	if (cur == NULL)
+		return;
+
+	if (cur->hash == target_hash && strcmp(cur->name, name) == 0)
+	{
+		root = cur->next;
+		free(cur);
+		fprintf(out, "%ld,DELETE,%s\n", now, name);
+		return;
+	}
+
+	while (cur->next != NULL)
+	{
+		if (cur->next->hash == target_hash && strcmp(cur->next->name, name) == 0)
+		{
+			hashRecord *temp = cur->next;
+			cur->next = cur->next->next;
+			free(temp);
+			fprintf(out, "%ld,DELETE,%s\n", now, name);
+			return;
+		}
+		cur = cur->next;
+	}
+}
+
+void search(char *name, FILE *out)
+{
+	time_t now = time(NULL);
+	uint32_t target_hash = jenkins_one_at_a_time_hash((const uint8_t *)name, strlen(name));
+	hashRecord *cur = root;
+
+	while (cur != NULL)
+	{
+		if (cur->hash == target_hash && strcmp(cur->name, name) == 0)
+		{
+			fprintf(out, "%ld,SEARCH,%s\n%u,%s,%u\n", now, name, cur->hash, cur->name, cur->salary);
+			return;
+		}
+		cur = cur->next;
+	}
+
+	fprintf(out, "%ld,SEARCH,%s\nNo Record Found\n", now, name);
+}
+
+void print_all(FILE *out)
+{
+	int count = 0;
+	for (hashRecord *temp = root; temp; temp = temp->next)
+		count++;
+
+	hashRecord **list = malloc(count * sizeof(hashRecord *));
+	int i = 0;
+	for (hashRecord *temp = root; temp; temp = temp->next)
+		list[i++] = temp;
+
+	for (int i = 0; i < count - 1; i++)
+	{
+		for (int j = i + 1; j < count; j++)
+		{
+			if (list[i]->hash > list[j]->hash)
+			{
+				hashRecord *tmp = list[i];
+				list[i] = list[j];
+				list[j] = tmp;
+			}
+		}
+	}
+
+	fprintf(out, "\n");
+	for (int i = 0; i < count; i++)
+	{
+		fprintf(out, "%u,%s,%u\n", list[i]->hash, list[i]->name, list[i]->salary);
+	}
+
+	free(list);
+}
+
+char *parse_until(int fd, char delimiter)
+{
+	char *buffer = malloc(MAX_LINE_LENGTH);
+	char ch;
+	int idx = 0;
+	while (read(fd, &ch, 1) == 1 && ch != delimiter && ch != '\n')
+	{
+		buffer[idx++] = ch;
+	}
+	buffer[idx] = '\0';
+	return buffer;
 }
 
 int get_num_threads(int fd)
 {
-	int num_threads = 0;
-	char* thread_info = parse_until(fd, '\n');
-	num_threads = get_num_threads_helper(thread_info);
-	free(thread_info);
-	
-	return num_threads;
+	char *info = parse_until(fd, '\n');
+	int num = atoi(info + 8); // skip "threads,"
+	free(info);
+	return num;
 }
-// Reads the contents from the file descriptor until c is read.
-// The next character to be read will be the character following c.
-char* parse_until(int fd, char c)
+
+void *handle_command(void *arg_ptr)
 {
-	char* line_info = (char*) malloc(sizeof(char) * MAX_LINE_LENGTH);
-	char* buf = (char*) malloc(sizeof(char));
-	
-	int i = 0;
-	line_info[0] = '\0';
-	int c_not_found = 1;
-	while (c_not_found)
+	ThreadArgs *args = (ThreadArgs *)arg_ptr;
+	FILE *out = args->out;
+	time_t now = time(NULL);
+
+	if (strcmp(args->command, "insert") == 0)
 	{
-		ssize_t ret_value = read(fd, buf, 1);
-		if (buf[0] == c)
+		pthread_rwlock_wrlock(&rwlock);
+		lock_acquire_count++;
+		fprintf(out, "%ld,WRITE LOCK ACQUIRED\n", now);
+		insert(args->name, atoi(args->param), out);
+		fprintf(out, "%ld,WRITE LOCK RELEASED\n", time(NULL));
+		lock_release_count++;
+		pthread_rwlock_unlock(&rwlock);
+
+		pthread_mutex_lock(&insert_mutex);
+		insert_count++;
+		if (insert_count == total_inserts)
 		{
-			c_not_found = 0;
+			pthread_cond_broadcast(&inserts_done);
+		}
+		pthread_mutex_unlock(&insert_mutex);
+	}
+	else if (strcmp(args->command, "delete") == 0)
+	{
+		pthread_mutex_lock(&insert_mutex);
+		while (insert_count < total_inserts)
+		{
+			fprintf(out, "%ld: WAITING ON INSERTS\n", now);
+			pthread_cond_wait(&inserts_done, &insert_mutex);
+		}
+		pthread_mutex_unlock(&insert_mutex);
+
+		pthread_rwlock_wrlock(&rwlock);
+		lock_acquire_count++;
+		fprintf(out, "%ld,WRITE LOCK ACQUIRED\n", time(NULL));
+		delete_record(args->name, out);
+		fprintf(out, "%ld,WRITE LOCK RELEASED\n", time(NULL));
+		lock_release_count++;
+		pthread_rwlock_unlock(&rwlock);
+	}
+	else if (strcmp(args->command, "search") == 0)
+	{
+		pthread_rwlock_rdlock(&rwlock);
+		lock_acquire_count++;
+		fprintf(out, "%ld,READ LOCK ACQUIRED\n", now);
+		search(args->name, out);
+		fprintf(out, "%ld,READ LOCK RELEASED\n", time(NULL));
+		lock_release_count++;
+		pthread_rwlock_unlock(&rwlock);
+	}
+
+	free(args->command);
+	free(args->name);
+	free(args->param);
+	free(args);
+	return NULL;
+}
+
+int main(void)
+{
+	pthread_rwlock_init(&rwlock, NULL);
+	FILE *out = fopen("output.txt", "w");
+
+	DIR *dirp = opendir("./");
+	struct dirent *entry;
+	char *filename = NULL;
+	while ((entry = readdir(dirp)) != NULL)
+	{
+		if (strcmp(entry->d_name, "commands.txt") == 0)
+		{
+			filename = "commands.txt";
 			break;
 		}
-		if (ret_value == 0)
-		{
-			if (debug) printf("Reached end of file.\n");
-			break;
-		}
-		else if (ret_value <= MAX_LINE_LENGTH)
-		{
-			line_info[i] = buf[0];
-		}
-		i++;
 	}
-	free(buf);
-	line_info[i+1] = '\0';
-	return line_info;
-}
+	closedir(dirp);
+	if (!filename)
+		filename = "dev/commands.txt";
 
-// Parse str until c is found, return the substring parsed.
-char* parse_string_until(char* str, char c)
-{
-	int len = 0;
-	int i = 0;
-	for (; str[i] != c; i++)
+	int fd = open(filename, O_RDONLY);
+	if (fd < 0)
 	{
-		i++;
+		fprintf(stderr, "Could not open commands file.\n");
+		return 1;
 	}
-	len = i;
-	char* parsed_string = (char*) malloc(sizeof(char) * (len + 1));
-	for (i = 0; i < len; i++)
+
+	int num_commands = get_num_threads(fd);
+
+	// Count inserts
+	off_t pos = lseek(fd, 0, SEEK_CUR);
+	for (int i = 0; i < num_commands; i++)
 	{
-		parsed_string[i] = str[i];
+		char *cmd = parse_until(fd, ',');
+		if (strcmp(cmd, "insert") == 0)
+			total_inserts++;
+		free(cmd);
+		parse_until(fd, ',');
+		parse_until(fd, '\n');
 	}
-	return parsed_string;
+	lseek(fd, pos, SEEK_SET);
+
+	pthread_t threads[num_commands];
+	int thread_index = 0;
+
+	for (int i = 0; i < num_commands; i++)
+	{
+		ThreadArgs *args = malloc(sizeof(ThreadArgs));
+		args->command = parse_until(fd, ',');
+		args->name = parse_until(fd, ',');
+		args->param = parse_until(fd, '\n');
+		args->out = out;
+
+		pthread_create(&threads[thread_index++], NULL, handle_command, args);
+	}
+
+	for (int i = 0; i < thread_index; i++)
+	{
+		pthread_join(threads[i], NULL);
+	}
+
+	fprintf(out, "\nNumber of lock acquisitions: %d\n", lock_acquire_count);
+	fprintf(out, "Number of lock releases: %d\n", lock_release_count);
+	print_all(out);
+
+	fclose(out);
+	close(fd);
+	pthread_rwlock_destroy(&rwlock);
+	return 0;
 }
-
-

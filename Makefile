@@ -1,11 +1,11 @@
-chash: chash.c # Add other source code files here
-	@gcc chash.c -o chash
+CC = gcc
+CFLAGS = -Wall -pthread -g
+TARGET = chash
 
-chash.c:
-	@echo "Do you seriously not have the source code!?!?"
-	
-test: chash.c # A testing target that will also run the compiled source code, and clean up when done
-	@gcc chash.c -o testchash && ./testchash; rm -f testchash
-	
+all: $(TARGET)
+
+$(TARGET): chash.c
+	$(CC) $(CFLAGS) chash.c -o $(TARGET)
+
 clean:
-	rm -f chash # Add other output files here
+	rm -f $(TARGET) output.txt
