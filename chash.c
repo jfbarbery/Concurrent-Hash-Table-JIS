@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <dirent.h>
+#include <pthread.h>
 
 #define MAX_LINE_LENGTH 50
 
@@ -22,6 +23,16 @@ typedef struct hash_struct
 	struct hash_struct *next;
 } hashRecord;
 
+typedef struct thread_info
+{
+	// Key
+	char* key;
+	// Value (if applicable to command)
+	uint32_t value;
+	// Function to call
+	char* command;
+} threadRecord;
+
 hashRecord* createHashTable();
 void insert(char* key, uint32_t value);
 void delete(char* key);
@@ -33,6 +44,12 @@ char* parse_until(int fd, char c);
 char* parse_string_until(char* str, char c);
 
 const int debug = 1;
+// Global head of the linked list (dummy node)
+hashRecord* record = NULL;
+
+// Global read-write lock
+pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
+
 
 int main(void)
 {
@@ -85,33 +102,32 @@ int main(void)
 	
 	// Read the number of threads
 	int num_threads = get_num_threads(fd);
+	
+	// Allocate array of pthread_t
+	pthread_t* thread_array = (pthread_t*) malloc(sizeof(pthread_t) * num_threads);
+	// Allocate array of thread info
+	threadRecord* thread_info_array = (threadRecord*) malloc(sizeof(threadRecord) * num_threads);
+
+	// Check malloc success
+	if (thread_array == NULL)
+	{
+		fprintf(stderr, "Failed to allocate thread array.\n");
+		exit(EXIT_FAILURE);
+	}
+	
 	if (debug) printf("Number of threads: %d\n\n", num_threads);
 	
 	// Process commands
 	int command_to_parse = 1;
+	int index = 0;
 	char* command;
 	do
 	{
 		// Parse command
 		command = parse_until(fd, ',');
-		if (!strcmp(command, "insert"))
-		{
-			if (debug) printf("insert command\n");
-		}
-		else if (!strcmp(command, "delete"))
-		{
-			if (debug) printf("delete command\n");
-		}
-		else if (!strcmp(command, "search"))
-		{
-			if (debug) printf("search command\n");
-		}
-		else
-		{
-			if (debug) printf("Unrecognized command.\n");
-			command_to_parse = 0;
-			//return -1; // Optionally end program here
-		}
+		// Store thread insert info in the list
+		strcpy(thread_info_array[i]->command, command);
+		// Save memory
 		free(command);
 		
 		// Parse name
@@ -133,6 +149,17 @@ int main(void)
 	close(fd);
 	if (debug) printf("Successfully closed the file.\n");
 	
+	// Create and execute all the insert threads
+	for (int i = 0; i < num_threads; i++)
+	{
+		if (!strcmp(thread_info_array[i]->command, "insert"))
+		{
+			thread_array[i] = pthread_create(&thread_array[i], NULL, thread_function, arg);
+		}
+	}
+
+	free(thread_array);
+	free(thread_info_array);
 	free(record);
 	
 	return 0;
@@ -140,24 +167,111 @@ int main(void)
 
 hashRecord* createHashTable()
 {
-	hashRecord* record = (hashRecord*) malloc(sizeof(hashRecord));
+	record = (hashRecord*) malloc(sizeof(hashRecord));
 	record->next = NULL;
 	return record;
 }
 
+// Jenkins one-at-a-time hash function
+uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length)
+{
+	size_t i = 0;
+	uint32_t hash = 0;
+	while (i != length)
+	{
+		hash += key[i++];
+		hash += hash << 10;
+		hash ^= hash >> 6;
+	}
+	hash += hash << 3;
+	hash ^= hash >> 11;
+	hash += hash << 15;
+	return hash;
+}
+
+// Insert or update
 void insert(char* key, uint32_t value)
 {
-	
+	pthread_rwlock_wrlock(&rwlock);
+
+	hashRecord* curr = record;
+	while (curr->next != NULL)
+	{
+		if (strcmp(curr->next->name, key) == 0)
+		{
+			curr->next->salary = value;
+			pthread_rwlock_unlock(&rwlock);
+			return;
+		}
+		curr = curr->next;
+	}
+
+	hashRecord* newNode = (hashRecord*) malloc(sizeof(hashRecord));
+	newNode->hash = jenkins_one_at_a_time_hash((uint8_t*) key, strlen(key));
+	strcpy(newNode->name, key);
+	newNode->salary = value;
+	newNode->next = record->next;
+	record->next = newNode;
+
+	pthread_rwlock_unlock(&rwlock);
 }
 
+// Delete by key
 void delete(char* key)
 {
-	
+	pthread_rwlock_rdlock(&rwlock);
+
+	hashRecord* prev = record;
+	hashRecord* curr = record->next;
+	while (curr != NULL)
+	{
+		if (strcmp(curr->name, key) == 0)
+		{
+			pthread_rwlock_unlock(&rwlock);
+
+			pthread_rwlock_wrlock(&rwlock);
+			prev = record;
+			curr = record->next;
+			while (curr != NULL)
+			{
+				if (strcmp(curr->name, key) == 0)
+				{
+					prev->next = curr->next;
+					free(curr);
+					break;
+				}
+				prev = curr;
+				curr = curr->next;
+			}
+			pthread_rwlock_unlock(&rwlock);
+			return;
+		}
+		prev = curr;
+		curr = curr->next;
+	}
+
+	pthread_rwlock_unlock(&rwlock);
 }
 
+// Search and print result
 void search(char* key)
 {
-	
+	pthread_rwlock_rdlock(&rwlock);
+
+	hashRecord* curr = record->next;
+	while (curr != NULL)
+	{
+		if (strcmp(curr->name, key) == 0)
+		{
+			printf("Found: %s with salary %u\n", curr->name, curr->salary);
+			pthread_rwlock_unlock(&rwlock);
+			return;
+		}
+		curr = curr->next;
+	}
+
+	printf("Key not found: %s\n", key);
+	pthread_rwlock_unlock(&rwlock);
 }
 
 int get_num_threads_helper(char* thread_info)
