@@ -15,6 +15,8 @@
 #define MAX_COMMAND_LENGTH 6
 #define MAX_NAME_LENGTH 50
 
+// Members: John Barbery, Ian Paquette, Shane McDermott
+
 typedef struct hash_struct
 {
 	// Hash value produced by running the name text through the hash function
@@ -49,6 +51,7 @@ char* parse_until(int fd, char c);
 char* parse_string_until(char* str, char c);
 void print();
 long long current_timestamp();
+void sort_by_hash();
 
 int debug = 0;
 int eof = 0;
@@ -186,7 +189,7 @@ int main(void)
 	fprintf(out, "Finished all threads.\n");
 	fprintf(out, "Total unlocks: %d\n", total_unlocks);
 	fprintf(out, "Total locks: %d\n", total_locks);
-	
+	sort_by_hash();
 	print();
 	
 	free(thread_array);
@@ -280,7 +283,7 @@ uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length)
 // Insert or update
 void insert(char* key, uint32_t value)
 {
-	uint8_t hash = jenkins_one_at_a_time_hash((uint8_t*) key, strlen(key));
+	uint32_t hash = jenkins_one_at_a_time_hash((uint8_t*) key, strlen(key));
 	fprintf(out, "%lld: INSERT,%d,%s,%d\n", current_timestamp(), hash, key, value);
 	pthread_rwlock_wrlock(&rwlock);
 	total_locks++;
@@ -501,3 +504,33 @@ long long current_timestamp() {
   return microseconds;
 }
 
+void sort_by_hash()
+{
+	hashRecord* sorted = NULL;  // new sorted list
+	hashRecord* curr = record->next;
+
+	while (curr != NULL)
+	{
+		hashRecord* next = curr->next;
+
+		// Find correct position in sorted list
+		if (sorted == NULL || curr->hash < sorted->hash)
+		{
+			curr->next = sorted;
+			sorted = curr;
+		}
+		else
+		{
+			hashRecord* temp = sorted;
+			while (temp->next != NULL && temp->next->hash <= curr->hash)
+			{
+				temp = temp->next;
+			}
+			curr->next = temp->next;
+			temp->next = curr;
+		}
+
+		curr = next;
+	}
+	record->next = sorted;
+}
