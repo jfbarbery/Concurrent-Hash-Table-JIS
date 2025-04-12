@@ -90,15 +90,15 @@ int main(void)
 	pthread_t* thread_array = (pthread_t*) malloc(sizeof(pthread_t) * num_threads);
 	// Allocate array of thread info
 	threadRecord* thread_info_array = (threadRecord*) malloc(sizeof(threadRecord) * num_threads);
-
+	
+	// ************** START AI CODE **************
 	// Check malloc success
 	if (thread_array == NULL)
 	{
 		if (debug) printf("Failed to allocate thread array.\n");
 		return 1;
 	}
-	
-	if (debug) printf("Number of threads: %d\n\n", num_threads);
+	// ************** END AI CODE **************
 	
 	// Process commands
 	int command_to_parse = 1;
@@ -153,6 +153,7 @@ int main(void)
 	
 	close(fd);
 	if (debug) printf("Successfully closed the file.\n\n");
+	// ************** START AI CODE **************
 	// Create and execute all the insert threads
 	for (int i = 0; i < num_threads; i++)
 	{
@@ -178,6 +179,7 @@ int main(void)
 			pthread_create(&thread_array[i], NULL, thread_function, (void*)&thread_info_array[i]);
 		}
 	}
+	// ************** END AI CODE **************
 	// Join the rest of the threads (non insert) here
 	for (int i = 0; i < num_threads; i++)
 	{
@@ -244,6 +246,7 @@ hashRecord* createHashTable()
 	return record;
 }
 
+// ************** START AI CODE **************
 void* thread_function(void* arg)
 {
 	threadRecord* args = (threadRecord*) arg;
@@ -262,6 +265,7 @@ void* thread_function(void* arg)
 	else if (debug) printf("How'd you get here?\n");
 	return NULL;
 }
+// ************** END AI CODE **************
 
 // Jenkins one-at-a-time hash function
 uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length)
@@ -280,6 +284,7 @@ uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length)
 	return hash;
 }
 
+// ************** START PARTIAL AI CODE **************
 // Insert or update
 void insert(char* key, uint32_t value)
 {
@@ -386,6 +391,8 @@ void search(char* key)
 	total_unlocks++;
 	pthread_rwlock_unlock(&rwlock);
 }
+
+// ************** END PARTIAL AI CODE **************
 
 int get_num_threads_helper(char* thread_info)
 {
@@ -504,6 +511,7 @@ long long current_timestamp() {
   return microseconds;
 }
 
+// ************** START AI CODE
 void sort_by_hash()
 {
 	hashRecord* sorted = NULL;  // new sorted list
@@ -534,3 +542,5 @@ void sort_by_hash()
 	}
 	record->next = sorted;
 }
+// ************** END AI CODE **************
+
