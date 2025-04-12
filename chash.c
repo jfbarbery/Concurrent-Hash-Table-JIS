@@ -8,8 +8,14 @@
 #include <ctype.h>
 #include <string.h>
 #include <dirent.h>
+#include <pthread.h>
+#include <sys/time.h>
+#include <inttypes.h>
 
-#define MAX_LINE_LENGTH 50
+#define MAX_COMMAND_LENGTH 6
+#define MAX_NAME_LENGTH 50
+
+// Members: John Barbery, Ian Paquette, Shane McDermott
 
 typedef struct hash_struct
 {
@@ -22,7 +28,19 @@ typedef struct hash_struct
 	struct hash_struct *next;
 } hashRecord;
 
+typedef struct thread_info
+{
+	// Key
+	char* key;
+	// Value (if applicable to command)
+	uint32_t value;
+	// Function to call
+	char* command;
+} threadRecord;
+
+int setupFD();
 hashRecord* createHashTable();
+void* thread_function(void* arg);
 void insert(char* key, uint32_t value);
 void delete(char* key);
 void search(char* key);
@@ -31,10 +49,159 @@ int num_digits_after_first_digit(char* thread_info, int i);
 int get_num_threads(int fd);
 char* parse_until(int fd, char c);
 char* parse_string_until(char* str, char c);
+void print();
+long long current_timestamp();
+void sort_by_hash();
 
-const int debug = 1;
+int debug = 0;
+int eof = 0;
+int total_locks = 0;
+int total_unlocks = 0;
+FILE* out = NULL;
+// Global head of the linked list (dummy node)
+// ** FIRST ITEM IN LIST IS A PLACEHOLDER, NOT AN ACTUAL ENTRY **
+hashRecord* record = NULL;
+
+// Global read-write lock
+pthread_rwlock_t rwlock = PTHREAD_RWLOCK_INITIALIZER;
+
 
 int main(void)
+{
+	int fd = setupFD();
+	if (fd != -1)
+	{
+		if (debug) printf("Successfully opened the file.\n");
+	}
+	else
+	{
+		if (debug) printf("Error opening file. Is commands.txt contained in this directory?\n");
+		return 1;
+	}
+	out = fopen("output.txt", "w");
+	// Initialize the record
+	hashRecord* record = createHashTable();
+	
+	// Read the number of threads
+	int num_threads = get_num_threads(fd);
+	fprintf(out, "Running on %d threads\n", num_threads);
+	
+	// Allocate array of pthread_t
+	pthread_t* thread_array = (pthread_t*) malloc(sizeof(pthread_t) * num_threads);
+	// Allocate array of thread info
+	threadRecord* thread_info_array = (threadRecord*) malloc(sizeof(threadRecord) * num_threads);
+	
+	// ************** START AI CODE **************
+	// Check malloc success
+	if (thread_array == NULL)
+	{
+		if (debug) printf("Failed to allocate thread array.\n");
+		return 1;
+	}
+	// ************** END AI CODE **************
+	
+	// Process commands
+	int command_to_parse = 1;
+	int index = 0;
+	char* command;
+	do
+	{
+		threadRecord* temp = malloc(sizeof(threadRecord));
+		temp->command = (char*) malloc(sizeof(char) * (MAX_COMMAND_LENGTH+1));
+		temp->key = (char*) malloc(sizeof(char) * (MAX_NAME_LENGTH+1));
+		
+		// Parse command
+		command = parse_until(fd, ',');
+		if (eof)
+		{
+			free(command);
+			free(temp->command);
+			free(temp->key);
+			free(temp);
+			break; // We may be at EOF without being told it yet
+		}
+		// Store thread command info in the list
+		strcpy(temp->command, command);
+		if (debug) printf("Command: |%s|\n", command);
+		// Save memory
+		free(command);
+		
+		// Parse name
+		char* name = parse_until(fd, ',');
+		// Store name info in the list
+		strcpy(temp->key, name);
+		if (debug) printf("Name: |%s|\n", name);
+		// Save memory
+		free(name);
+		
+		// Parse salary
+		char* salary_string = parse_until(fd, '\n');
+		int salary = atoi(salary_string);
+		// Store salary info in the list
+		temp->value = salary;
+		if (debug) printf("Salary: %d\n", salary);
+		// Save memory
+		free(salary_string);
+		
+		// Store all copied values into array
+		thread_info_array[index] = *temp;
+		
+		if (debug) printf("\n");
+		index++;
+		
+	} while (!eof);
+	
+	close(fd);
+	if (debug) printf("Successfully closed the file.\n\n");
+	// ************** START AI CODE **************
+	// Create and execute all the insert threads
+	for (int i = 0; i < num_threads; i++)
+	{
+		if (!strcmp(thread_info_array[i].command, "insert"))
+		{
+			pthread_create(&thread_array[i], NULL, thread_function, (void*)&thread_info_array[i]);
+		}
+	}
+	// Join all insert threads here
+	for (int i = 0; i < num_threads; i++)
+	{
+		if (!strcmp(thread_info_array[i].command, "insert"))
+		{
+			pthread_join(thread_array[i], NULL);
+		}
+	}
+	
+	// Create and execute all the non-insert threads (everything else)
+	for (int i = 0; i < num_threads; i++)
+	{
+		if (strcmp(thread_info_array[i].command, "insert"))
+		{
+			pthread_create(&thread_array[i], NULL, thread_function, (void*)&thread_info_array[i]);
+		}
+	}
+	// ************** END AI CODE **************
+	// Join the rest of the threads (non insert) here
+	for (int i = 0; i < num_threads; i++)
+	{
+		if (strcmp(thread_info_array[i].command, "insert"))
+		{
+			pthread_join(thread_array[i], NULL);
+		}
+	}
+	fprintf(out, "Finished all threads.\n");
+	fprintf(out, "Total unlocks: %d\n", total_unlocks);
+	fprintf(out, "Total locks: %d\n", total_locks);
+	sort_by_hash();
+	print();
+	
+	free(thread_array);
+	free(thread_info_array);
+	free(record);
+	fclose(out);
+	return 0;
+}
+
+int setupFD()
 {
 	// Check to see if "commands.txt" is contained in this directory
 	// (Our source code does not contain commands.txt, so if this is
@@ -69,96 +236,163 @@ int main(void)
 		filename = "dev/commands.txt";
 	}
 	
-	// Open commands file
-	int fd = open(filename, O_RDONLY);
-	if (fd != -1)
-	{
-		if (debug) printf("Successfully opened the file.\n");
-	}
-	else
-	{
-		if (debug) printf("Error opening file. Is commands.txt contained in this directory?\n");
-		return 1;
-	}
-	// Initialize the record
-	hashRecord* record = createHashTable();
-	
-	// Read the number of threads
-	int num_threads = get_num_threads(fd);
-	if (debug) printf("Number of threads: %d\n\n", num_threads);
-	
-	// Process commands
-	int command_to_parse = 1;
-	char* command;
-	do
-	{
-		// Parse command
-		command = parse_until(fd, ',');
-		if (!strcmp(command, "insert"))
-		{
-			if (debug) printf("insert command\n");
-		}
-		else if (!strcmp(command, "delete"))
-		{
-			if (debug) printf("delete command\n");
-		}
-		else if (!strcmp(command, "search"))
-		{
-			if (debug) printf("search command\n");
-		}
-		else
-		{
-			if (debug) printf("Unrecognized command.\n");
-			command_to_parse = 0;
-			//return -1; // Optionally end program here
-		}
-		free(command);
-		
-		// Parse name
-		char* name = parse_until(fd, ',');
-		if (debug) printf("Name: |%s|\n", name);
-		free(name);
-		
-		// Parse salary
-		char* salary_string = parse_until(fd, '\n');
-		if (!strcmp(command, "insert"))
-		{
-			int salary = atoi(salary_string);
-			if (debug) printf("Salary: %d\n", salary);
-		}
-		free(salary_string);
-		if (debug) printf("\n");
-	} while (command_to_parse);
-	
-	close(fd);
-	if (debug) printf("Successfully closed the file.\n");
-	
-	free(record);
-	
-	return 0;
+	return open(filename, O_RDONLY);
 }
 
 hashRecord* createHashTable()
 {
-	hashRecord* record = (hashRecord*) malloc(sizeof(hashRecord));
+	record = (hashRecord*) malloc(sizeof(hashRecord));
 	record->next = NULL;
 	return record;
 }
 
+// ************** START AI CODE **************
+void* thread_function(void* arg)
+{
+	threadRecord* args = (threadRecord*) arg;
+	if (!strcmp(args->command, "insert"))
+	{
+		insert(args->key, args->value);
+	}
+	else if (!strcmp(args->command, "delete"))
+	{
+		delete(args->key);
+	}
+	else if (!strcmp(args->command, "search"))
+	{
+		search(args->key);
+	}
+	else if (debug) printf("How'd you get here?\n");
+	return NULL;
+}
+// ************** END AI CODE **************
+
+// Jenkins one-at-a-time hash function
+uint32_t jenkins_one_at_a_time_hash(const uint8_t* key, size_t length)
+{
+	size_t i = 0;
+	uint32_t hash = 0;
+	while (i != length)
+	{
+		hash += key[i++];
+		hash += hash << 10;
+		hash ^= hash >> 6;
+	}
+	hash += hash << 3;
+	hash ^= hash >> 11;
+	hash += hash << 15;
+	return hash;
+}
+
+// ************** START PARTIAL AI CODE **************
+// Insert or update
 void insert(char* key, uint32_t value)
 {
+	uint32_t hash = jenkins_one_at_a_time_hash((uint8_t*) key, strlen(key));
+	fprintf(out, "%lld: INSERT,%d,%s,%d\n", current_timestamp(), hash, key, value);
+	pthread_rwlock_wrlock(&rwlock);
+	total_locks++;
+	fprintf(out, "%lld: WRITE LOCK ACQUIRED\n", current_timestamp());
+
+	hashRecord* curr = record;
+	while (curr->next != NULL)
+	{
+		if (strcmp(curr->next->name, key) == 0)
+		{
+			curr->next->salary = value;
+			fprintf(out, "%lld: WRITE LOCK RELEASED\n", current_timestamp());
+			total_unlocks++;
+			pthread_rwlock_unlock(&rwlock);
+			return;
+		}
+		curr = curr->next;
+	}
+	hashRecord* newNode = (hashRecord*) malloc(sizeof(hashRecord));
+	newNode->hash = hash;
+	strcpy(newNode->name, key);
+	newNode->salary = value;
+	newNode->next = NULL;
+	curr->next = newNode;
+	fprintf(out, "%lld: WRITE LOCK RELEASED\n", current_timestamp());
+	total_unlocks++;
+	pthread_rwlock_unlock(&rwlock);
 	
 }
 
+// Delete by key
 void delete(char* key)
 {
-	
+	fprintf(out, "%lld: DELETE,%s\n", current_timestamp(), key);
+	pthread_rwlock_rdlock(&rwlock);
+	total_locks++;
+	fprintf(out, "%lld: READ LOCK ACQUIRED\n", current_timestamp());
+
+	hashRecord* prev = record;
+	hashRecord* curr = record->next;
+	while (curr != NULL)
+	{
+		if (strcmp(curr->name, key) == 0)
+		{
+			fprintf(out, "%lld: READ LOCK RELEASED\n", current_timestamp());
+			total_unlocks++;
+			pthread_rwlock_unlock(&rwlock);
+			pthread_rwlock_wrlock(&rwlock);
+			total_locks++;
+			fprintf(out, "%lld: WRITE LOCK ACQUIRED\n", current_timestamp());
+			prev = record;
+			curr = record->next;
+			while (curr != NULL)
+			{
+				if (strcmp(curr->name, key) == 0)
+				{
+					prev->next = curr->next;
+					free(curr);
+					break;
+				}
+				prev = curr;
+				curr = curr->next;
+			}
+			fprintf(out, "%lld: WRITE LOCK RELEASED\n", current_timestamp());
+			total_unlocks++;
+			pthread_rwlock_unlock(&rwlock);
+			return;
+		}
+		prev = curr;
+		curr = curr->next;
+	}
+	fprintf(out, "%lld: WRITE LOCK RELEASED\n", current_timestamp());
+	total_unlocks++;
+	pthread_rwlock_unlock(&rwlock);
 }
 
+// Search and print result
 void search(char* key)
 {
-	
+	pthread_rwlock_rdlock(&rwlock);
+	total_locks++;
+	fprintf(out, "%lld: READ LOCK ACQUIRED\n", current_timestamp());
+
+	hashRecord* curr = record->next;
+	while (curr != NULL)
+	{
+		if (strcmp(curr->name, key) == 0)
+		{
+			fprintf(out, "%lld: SEARCH: FOUND %s\n", current_timestamp(), key);
+			fprintf(out, "%lld: READ LOCK RELEASED\n", current_timestamp());
+			total_unlocks++;
+			pthread_rwlock_unlock(&rwlock);
+			return;
+		}
+		curr = curr->next;
+	}
+
+	fprintf(out, "%lld: SEARCH: NOT FOUND\n", current_timestamp());
+	fprintf(out, "%lld: READ LOCK RELEASED\n", current_timestamp());
+	total_unlocks++;
+	pthread_rwlock_unlock(&rwlock);
 }
+
+// ************** END PARTIAL AI CODE **************
 
 int get_num_threads_helper(char* thread_info)
 {
@@ -211,7 +445,7 @@ int get_num_threads(int fd)
 // The next character to be read will be the character following c.
 char* parse_until(int fd, char c)
 {
-	char* line_info = (char*) malloc(sizeof(char) * MAX_LINE_LENGTH);
+	char* line_info = (char*) malloc(sizeof(char) * (MAX_NAME_LENGTH+1));
 	char* buf = (char*) malloc(sizeof(char));
 	
 	int i = 0;
@@ -228,9 +462,10 @@ char* parse_until(int fd, char c)
 		if (ret_value == 0)
 		{
 			if (debug) printf("Reached end of file.\n");
+			eof = 1;
 			break;
 		}
-		else if (ret_value <= MAX_LINE_LENGTH)
+		else if (ret_value <= (MAX_NAME_LENGTH+1))
 		{
 			line_info[i] = buf[0];
 		}
@@ -259,4 +494,53 @@ char* parse_string_until(char* str, char c)
 	return parsed_string;
 }
 
+void print()
+{
+	hashRecord* cur = record->next;
+	while (cur != NULL)
+	{
+		fprintf(out, "%" PRIu32 ",%s,%d\n", cur->hash, cur->name, cur->salary);
+		cur = cur->next;
+	}
+}
+
+long long current_timestamp() {
+  struct timeval te;
+  gettimeofday(&te, NULL); // get current time
+  long long microseconds = (te.tv_sec * 1000000) + te.tv_usec; // calculate milliseconds
+  return microseconds;
+}
+
+// ************** START AI CODE
+void sort_by_hash()
+{
+	hashRecord* sorted = NULL;  // new sorted list
+	hashRecord* curr = record->next;
+
+	while (curr != NULL)
+	{
+		hashRecord* next = curr->next;
+
+		// Find correct position in sorted list
+		if (sorted == NULL || curr->hash < sorted->hash)
+		{
+			curr->next = sorted;
+			sorted = curr;
+		}
+		else
+		{
+			hashRecord* temp = sorted;
+			while (temp->next != NULL && temp->next->hash <= curr->hash)
+			{
+				temp = temp->next;
+			}
+			curr->next = temp->next;
+			temp->next = curr;
+		}
+
+		curr = next;
+	}
+	record->next = sorted;
+}
+// ************** END AI CODE **************
 
